@@ -1,7 +1,6 @@
 package com.ledger.cqrs.aggregate;
 
 import java.text.MessageFormat;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -20,6 +19,9 @@ import com.ledger.cqrs.command.UpdateAccountStatusCommand;
 import com.ledger.cqrs.repository.AccountReadRepository;
 import com.ledger.domain.Account;
 import com.ledger.domain.Wallet;
+import com.ledger.dto.FundIn;
+import com.ledger.dto.FundOut;
+import com.ledger.dto.MoveAsset;
 import com.ledger.eventsourcing.event.AccountOpenedEvent;
 import com.ledger.eventsourcing.event.UpdateAccountStatusEvent;
 import com.ledger.eventsourcing.event.WalletBalanceUpdateEvent;
@@ -44,16 +46,18 @@ public class AccountAggregate {
     
     public void handleUpdateAccountStatusCommand(UpdateAccountStatusCommand command) {
     	Account account = readRepository.getAccount(command.getId());
-    	if (account.getStatus() == command.getStatus()) 
-    		throw new IllegalStateException ("update account status declined, need to update status from one to another");
-    	UpdateAccountStatusEvent event = new UpdateAccountStatusEvent(account.getEntityId(), command.getId(), command.getStatus());
+    	if (account.getStatus() == Status.valueOf(command.getStatus())) 
+    		throw new IllegalStateException ("Update account status declined, need to update status from one to another");
+    	UpdateAccountStatusEvent event = new UpdateAccountStatusEvent(account.getEntityId(), command.getId(), Status.valueOf(command.getStatus()));
     	event.setEStatus(EventStatus.PENDING);
     	eventRepository.addEvent(account.getEntityId(), event);
     }
     
-    public void handleFundInCommand(List<FundInCommand> commands) {
-    	validateFundInCommand(commands);
-    	for (FundInCommand command: commands) {
+    public void handleFundInCommand(FundInCommand fundInCommand) {
+    	List<FundIn> requests = fundInCommand.getRequests();
+    	//validate the whole command before processing
+    	validateFundInCommand(requests);
+    	for (FundIn command: requests) {
 	    	String entityId = readRepository.getEntityIdByWalletId(command.getWalletId());
 	    	WalletBalanceUpdateEvent event = new WalletBalanceUpdateEvent(entityId, command.getWalletId(), command.getAmount());
 	    	event.setEStatus(EventStatus.PENDING);
@@ -61,9 +65,11 @@ public class AccountAggregate {
     	}
     }
     
-    public void handleFundOutCommand(List<FundOutCommand> commands) {
-    	validateFundOutCommand(commands);
-    	for (FundOutCommand command: commands) {
+    public void handleFundOutCommand(FundOutCommand fundOutCommand) {
+    	List<FundOut> requests = fundOutCommand.getRequests();
+    	//validate the whole command before processing
+    	validateFundOutCommand(requests);
+    	for (FundOut command: requests) {
 	    	String entityId = readRepository.getEntityIdByWalletId(command.getWalletId());
 	    	
 	    	WalletBalanceUpdateEvent event = new WalletBalanceUpdateEvent(entityId, command.getWalletId(), -command.getAmount());
@@ -72,9 +78,11 @@ public class AccountAggregate {
     	}
     }
 
-    public void handleMoveAssetCommand(List<MoveAssetCommand> commands) {
-    	validateMoveAssetCommand(commands);
-    	for (MoveAssetCommand command: commands) {
+    public void handleMoveAssetCommand(MoveAssetCommand moveAssetCommand) {
+    	List<MoveAsset> requests = moveAssetCommand.getRequests();
+    	//validate the whole command before processing
+    	validateMoveAssetCommand(requests);
+    	for (MoveAsset command: requests) {
 	    	String entityId = readRepository.getEntityIdByWalletId(command.getFromWalletId());
 			WalletBalanceUpdateEvent moveOutEvent = new WalletBalanceUpdateEvent(entityId, command.getFromWalletId(), -command.getAmount());
 			moveOutEvent.setEStatus(EventStatus.PENDING);
@@ -85,9 +93,9 @@ public class AccountAggregate {
     	}
     }
     
-    public void validateFundInCommand (List<FundInCommand> commands) {
+    public void validateFundInCommand (List<FundIn> commands) {
     	Set<String> entityIds = new HashSet<>();
-    	for (FundInCommand command: commands) {
+    	for (FundIn command: commands) {
     		String accountId = readRepository.getAccountIdByWalletId(command.getWalletId());
     		String entityId = readRepository.getEntityIdByAccountId(accountId);
     		entityIds.add(entityId);
@@ -96,11 +104,11 @@ public class AccountAggregate {
     	validateMovementInOneEntity(entityIds);
     }
     
-    public void validateFundOutCommand(List<FundOutCommand> commands) {
+    public void validateFundOutCommand(List<FundOut> commands) {
     	Set<String> entityIds = new HashSet<>();
 
     	Map<String, Double> balanceUpdateList = new HashMap<>();
-    	for (FundOutCommand command: commands) {
+    	for (FundOut command: commands) {
     		String accountId = readRepository.getAccountIdByWalletId(command.getWalletId());
     		String entityId = readRepository.getEntityIdByAccountId(accountId);
     		entityIds.add(entityId);
@@ -118,17 +126,17 @@ public class AccountAggregate {
     	for (var entry : balanceUpdateList.entrySet()) {
     	    Wallet wallet = readRepository.getWallet(entry.getKey());
     	    if (wallet.getBalance() - entry.getValue().doubleValue() < 0) {
-    	    	var errorMessage = MessageFormat.format("insufficient balance for wallet id {0}", entry.getKey());
+    	    	var errorMessage = MessageFormat.format("Insufficient balance for wallet id {0}", entry.getKey());
     	    	throw new IllegalStateException (errorMessage);
     	    }
     	}
     }
     
-    public void validateMoveAssetCommand(List<MoveAssetCommand> commands) {
+    public void validateMoveAssetCommand(List<MoveAsset> commands) {
     	Set<String> entityIds = new HashSet<>();
 
     	Map<String, Double> balanceUpdateList = new HashMap<>();
-    	for (MoveAssetCommand command: commands) {
+    	for (MoveAsset command: commands) {
     		String fromAccountId = readRepository.getAccountIdByWalletId(command.getFromWalletId());
     		String toAccountId = readRepository.getAccountIdByWalletId(command.getToWalletId());
     		String fromEntityId = readRepository.getEntityIdByAccountId(fromAccountId);
@@ -159,7 +167,7 @@ public class AccountAggregate {
     	for (var entry : balanceUpdateList.entrySet()) {
     	    Wallet wallet = readRepository.getWallet(entry.getKey());
     	    if (wallet.getBalance() + entry.getValue().doubleValue() < 0) {
-    	    	var errorMessage = MessageFormat.format("insufficient balance for wallet id {0}", entry.getKey());
+    	    	var errorMessage = MessageFormat.format("Insufficient balance for wallet id {0}", entry.getKey());
     	    	throw new IllegalStateException (errorMessage);
     	    }
     	}
@@ -167,13 +175,13 @@ public class AccountAggregate {
     
     private void validateAccountIsNotClosed(String accountId, String walletId) {
     	if (readRepository.getAccount(accountId).getStatus() == Status.CLOSED) {
-			var errorMessage = MessageFormat.format("The account {0} of wallet id {1} is closed", accountId, walletId);
+			var errorMessage = MessageFormat.format("The account {0} is CLOSED, we cannot do movement for wallet {1} in CLOSED account", accountId, walletId);
 			throw new IllegalStateException (errorMessage);
 		}
     }
     
     private void validateMovementInOneEntity(Set<String> entityIds) {
     	if (entityIds.size() > 1) 
-    		throw new IllegalStateException ("all movements shall be in the same entity");
+    		throw new IllegalStateException ("All movements shall be in the same entity");
     }
 }

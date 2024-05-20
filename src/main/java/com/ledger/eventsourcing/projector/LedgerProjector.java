@@ -12,6 +12,7 @@ import java.util.logging.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import com.ledger.common.AssetType;
 import com.ledger.common.EventStatus;
 import com.ledger.common.Status;
 import com.ledger.cqrs.exception.AggregateNotFoundException;
@@ -19,6 +20,8 @@ import com.ledger.cqrs.repository.AccountReadRepository;
 import com.ledger.domain.Account;
 import com.ledger.domain.Entity;
 import com.ledger.domain.Wallet;
+import com.ledger.dto.AccountInfo;
+import com.ledger.dto.WalletInfo;
 import com.ledger.eventsourcing.event.AccountOpenedEvent;
 import com.ledger.eventsourcing.event.UpdateAccountStatusEvent;
 import com.ledger.eventsourcing.event.WalletBalanceUpdateEvent;
@@ -44,7 +47,7 @@ public class LedgerProjector implements Runnable{
 	@Override
 	public void run() {
 		while(true) {
-			logger.log(Level.INFO, "Balance projector is running");
+			logger.info("Balance projector is running");
 			try {
 				doJob();
 			} catch (InterruptedException e) {
@@ -56,12 +59,15 @@ public class LedgerProjector implements Runnable{
 	public void doJob() throws InterruptedException {
 		try {
 			while(true) {
+				logger.info("Checking aggreagateId (entityId) in the queue...");
 				String aggId = eventRepository.getEventQueue().poll();
 				if(aggId == null){
-					Thread.yield();
+					logger.info("Nothing in the queue, sleep 10 seconds");
+					Thread.sleep(10000);
 					continue;
 				}
 	
+				logger.info(MessageFormat.format("Processing events for entityId: {0}", aggId));
 				var events = eventRepository.getEventStore().get(aggId);
 				Entity entity = null;
 				try { 
@@ -82,6 +88,7 @@ public class LedgerProjector implements Runnable{
 							apply((UpdateAccountStatusEvent) event);
 					}
 				}
+				logger.info(MessageFormat.format("Complete event processing for entityId: {0}", aggId));
 			}
 		} catch(Exception e) {
 			e.printStackTrace();
@@ -104,26 +111,32 @@ public class LedgerProjector implements Runnable{
     public void apply(AccountOpenedEvent event) {
     	
     	var entity = Entity.builder().entityId(event.getEntityId()).entityName(event.getEntityName()).version(1).build();
-    	List<Account> accounts = Optional.ofNullable(event.getAccount()).orElse(new ArrayList<Account>());
-    	
-    	for (Account eventAccount: accounts) {
+    	List<AccountInfo> accountInfos = Optional.ofNullable(event.getAccount()).orElse(new ArrayList<AccountInfo>());
+    	List<Account> accounts = new ArrayList<>();
+    	for (AccountInfo eventAccount: accountInfos) {
+    		Account account = new Account();
     		var accountId = UUID.randomUUID().toString();
-    		eventAccount.setAccountId(accountId);
-    		eventAccount.setEntityId(event.getEntityId());
-    		eventAccount.setStatus(Status.OPEN);
+    		account.setAccountId(accountId);
+    		account.setEntityId(event.getEntityId());
+    		account.setAccountName(eventAccount.getAccountName());
+    		account.setStatus(Status.OPEN);
     		
-    		List<Wallet> wallets = Optional.ofNullable(eventAccount.getWallets()).orElse(new ArrayList<Wallet>());
-    		
-    		for (Wallet eventWallet: wallets) {
+    		List<WalletInfo> walletInfos = Optional.ofNullable(eventAccount.getWallets()).orElse(new ArrayList<WalletInfo>());
+    		List<Wallet> wallets = new ArrayList<Wallet>();
+    		for (WalletInfo eventWallet: walletInfos) {
+    			Wallet wallet = new Wallet();
     			var walletId = UUID.randomUUID().toString();
-    			eventWallet.setAccountId(accountId);
-    			eventWallet.setWalletId(walletId);
-    			
-    			readRepository.addWallet(walletId, eventWallet);
+    			wallet.setAccountId(accountId);
+    			wallet.setWalletId(walletId);
+    			wallet.setWalletName(eventWallet.getWalletName());
+    			wallet.setType(AssetType.valueOf(eventWallet.getType()));
+    			wallets.add(wallet);
+    			readRepository.addWallet(walletId, wallet);
     		}
     		
-    		eventAccount.setWallets(wallets);
-    		readRepository.addAccount(accountId, eventAccount);
+    		account.setWallets(wallets);
+    		accounts.add(account);
+    		readRepository.addAccount(accountId, account);
     		event.setEStatus(EventStatus.CLEARED);
     		event.setDatetime(new Date());
     	}

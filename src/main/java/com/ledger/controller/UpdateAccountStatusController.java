@@ -16,6 +16,7 @@ import com.ledger.cqrs.command.UpdateAccountStatusCommand;
 import com.ledger.cqrs.exception.AggregateNotFoundException;
 import com.ledger.dto.AccountResponse;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -26,7 +27,7 @@ public class UpdateAccountStatusController {
 	private final AccountAggregate accountAggregate;
 	
     @PostMapping
-	public ResponseEntity<AccountResponse> updateAccountStatus(@RequestBody UpdateAccountStatusCommand command) {
+	public ResponseEntity<AccountResponse> updateAccountStatus(@RequestBody @Valid UpdateAccountStatusCommand command) {
 		
 		try {
 			accountAggregate.handleUpdateAccountStatusCommand(command);
@@ -34,6 +35,7 @@ public class UpdateAccountStatusController {
 			return new ResponseEntity<>(new AccountResponse("Account status update request is processing in async mode!", command.getId()), HttpStatus.OK);
 		}  catch (AggregateNotFoundException | IllegalStateException e) {
 			var safeErrorMessage = MessageFormat.format("Client made a bad request - {0}.", e.getMessage());
+			logger.info(safeErrorMessage);
 			return new ResponseEntity<>(new AccountResponse(safeErrorMessage, command.getId()), HttpStatus.BAD_REQUEST);
 		}
 		 catch (Exception e) {
@@ -42,4 +44,5 @@ public class UpdateAccountStatusController {
 			return new ResponseEntity<>(new AccountResponse(safeErrorMessage, command.getId()), HttpStatus.INTERNAL_SERVER_ERROR);
 		}
 	}
+    
 }

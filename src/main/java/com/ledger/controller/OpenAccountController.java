@@ -16,6 +16,7 @@ import com.ledger.cqrs.aggregate.AccountAggregate;
 import com.ledger.cqrs.command.OpenAccountCommand;
 import com.ledger.dto.AccountResponse;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -26,7 +27,7 @@ public class OpenAccountController {
 	private final AccountAggregate accountAggregate;
 	
 	@PostMapping
-	public ResponseEntity<AccountResponse> openAccount(@RequestBody OpenAccountCommand command) {
+	public ResponseEntity<AccountResponse> openAccount(@RequestBody @Valid OpenAccountCommand command) {
 
 		var id = UUID.randomUUID().toString();
 		command.setEntityId(id);
@@ -34,7 +35,7 @@ public class OpenAccountController {
 			accountAggregate.handleOpenAccountCommand(command);
 			logger.info("Account creation request returned, it is processing in async mode");
 			return new ResponseEntity<>(new AccountResponse("Account creation request is processing in async mode!", id), HttpStatus.CREATED);
-		}  catch (Exception e) {
+		} catch (Exception e) {
 			var safeErrorMessage = MessageFormat.format("Error while processing request to open account for id - {0}.", id);
 			logger.log(Level.SEVERE, safeErrorMessage, e);
 			return new ResponseEntity<>(new AccountResponse(safeErrorMessage, id), HttpStatus.INTERNAL_SERVER_ERROR);

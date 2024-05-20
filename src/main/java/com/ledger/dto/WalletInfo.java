@@ -1,10 +1,9 @@
-package com.ledger.domain;
+package com.ledger.dto;
 
 import com.ledger.common.AssetType;
 import com.ledger.common.ValueOfEnum;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotEmpty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,11 +13,10 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Wallet {
-
-	private String walletId;
-	private String accountId;
+public class WalletInfo {
+	@NotEmpty(message = "walletName is mandatory")
 	private String walletName;
-	private AssetType type;
-	private double balance;
+	@NotEmpty(message = "type is mandatory")
+	@ValueOfEnum(enumClass = AssetType.class)
+	private String type;
 }

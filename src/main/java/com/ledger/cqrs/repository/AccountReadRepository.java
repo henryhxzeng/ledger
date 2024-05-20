@@ -1,5 +1,6 @@
 package com.ledger.cqrs.repository;
 
+import java.text.MessageFormat;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -32,14 +33,14 @@ public class AccountReadRepository {
 	public Entity getEntity(String entityId) {
 		Entity entity = entityReadRepo.get(entityId);
 		if (entity == null)
-			throw new AggregateNotFoundException("Incorrect entityId provided");
+			throw new AggregateNotFoundException(MessageFormat.format("Incorrect entityId {0} provided", entityId));
 		return entity;
 	}
 	
 	public Account getAccount(String accountId) {
 		Account account = accountReadRepo.get(accountId);
 		if (account == null)
-			throw new AggregateNotFoundException("Incorrect accountId provided");
+			throw new AggregateNotFoundException(MessageFormat.format("Incorrect accountId {0} provided", accountId));
 		return account;
 		
 	}
@@ -47,7 +48,7 @@ public class AccountReadRepository {
 	public Wallet getWallet(String walletId) {
 		Wallet wallet = walletReadRepo.get(walletId);
 		if (wallet == null)
-			throw new AggregateNotFoundException("Incorrect walletId provided");
+			throw new AggregateNotFoundException(MessageFormat.format("Incorrect walletId {0} provided", walletId));
 		return wallet;
 	}
 	
